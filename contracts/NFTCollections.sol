@@ -15,9 +15,8 @@ contract NFTCollections is Ownable {
     MintingInfo mintingInfo;
     ContactData contactData;
     MarketplaceInfo marketplaceInfo;
+    PaymentInfo paymentInfo;
     string[] tags;
-    string paymentPlan;
-    bool isVariablePaymentPlan;
     uint256 status;
   }
 
@@ -43,6 +42,11 @@ contract NFTCollections is Ownable {
     string email;
   }
 
+  struct PaymentInfo {
+    string paymentPlan;
+    bool isVariablePaymentPlan;
+  }
+
   struct MarketplaceInfo {
     string openseaURL;
   }
@@ -50,40 +54,84 @@ contract NFTCollections is Ownable {
   struct PaymentPlanHistory {
     uint256 startDate;
     string paymentPlan;
+    string paymentTxHash;
   }
 
   mapping(uint256 => CollectionData) collections;
   mapping(address => bool) hasCollection;
   mapping(uint256 => PaymentPlanHistory[]) paymentPlanHistory;
 
+  event PaymentPlanHistoryAdded(
+    uint256 collectionId, 
+    uint256 startDate, 
+    string paymentPlan,
+    string paymentTxHash
+  );
+
   event CollectionCreated(
     address owner,
-    uint256 collectionId, 
-    string name
+    uint256 id,
+    string name,
+    string description,
+    string imageURI,
+    string blockchain,
+    uint256 totalSupply,
+    uint256 mintDate,
+    uint256 price
+  );
+
+  event CollectionContactCreated(
+    uint256 id,
+    string websiteURL,
+    string twitter,
+    string discord,
+    string email,
+    string openseaURL,
+    string[] tags,
+    string paymentPlan,
+    bool isVariablePaymentPlan,
+    uint256 status
   );
 
   event CollectionUpdated(
-    address owner,
-    uint256 collectionId, 
-    string name
+    uint256 id,
+    string name, 
+    string description, 
+    string imageURI,
+    string blockchain,
+    uint256 totalSupply, 
+    uint256 mintDate, 
+    uint256 price,
+    string[] contactData,
+    string[] marketplaceData,
+    string[] tags
   );
 
   event CollectionPublished(
-    address owner,
-    uint256 collectionId, 
-    string name
+    uint256 id,
+    string paymentPlan,
+    uint256 status
   );
 
   event CollectionCancelled(
-    address owner,
-    uint256 collectionId, 
-    string name
+    uint256 id,
+    uint256 status
   );
 
   event CollectionRequestPlanUpgrade(
-    address owner,
-    uint256 collectionId, 
-    string name
+    uint256 id, 
+    string paymentPlan,
+    uint256 status
+  );
+
+  event StartVariablePaymentPlan(
+    uint256 id,
+    bool isVariablePaymentPlan
+  );
+
+  event EndVariablePaymentPlan(
+    uint256 id,
+    bool isVariablePaymentPlan
   );
 
   modifier onlyOneCollectionByWallet() {
@@ -107,7 +155,7 @@ contract NFTCollections is Ownable {
     string[] memory _contactData,
     string[] memory _marketplaceData,
     string[] memory _tags,
-    string memory _paymentPlan
+    string[] memory _paymentInfo
   ) public onlyOneCollectionByWallet {
     _collectionIds.increment();
 
@@ -134,9 +182,11 @@ contract NFTCollections is Ownable {
       MarketplaceInfo(
         _marketplaceData[0]
       ),
+      PaymentInfo(
+        _paymentInfo[0],
+        false
+      ),
       _tags,
-      _paymentPlan,
-      false,
       0
     );
 
@@ -145,14 +195,36 @@ contract NFTCollections is Ownable {
 
     PaymentPlanHistory memory _paymentPlanHistory = PaymentPlanHistory(
       0,
-      _paymentPlan
+      _paymentInfo[0],
+      _paymentInfo[1]
     );
     paymentPlanHistory[_collectionIds.current()].push(_paymentPlanHistory);
+
+    emit PaymentPlanHistoryAdded(_collectionIds.current(), 0, _paymentInfo[0], _paymentInfo[1]);
 
     emit CollectionCreated(
       msg.sender,
       _collectionIds.current(),
-      _name
+      _name,
+      _description,
+      _imageURI,
+      _blockchain,
+      _totalSupply,
+      _mintDate,
+      _price
+    );
+
+    emit CollectionContactCreated(
+      _collectionIds.current(),
+      _contactData[0],
+      _contactData[1],
+      _contactData[2],
+      _contactData[3],
+      _marketplaceData[0],
+      _tags,
+      _paymentInfo[0],
+      false,
+      0
     );
   }
 
@@ -186,42 +258,60 @@ contract NFTCollections is Ownable {
     collections[_collectionId] = collectionData;
 
     emit CollectionUpdated(
-      msg.sender,
       _collectionId,
-      _name
+      _name,
+      _description,
+      _imageURI,
+      _blockchain,
+      _totalSupply,
+      _mintDate,
+      _price,
+      _contactData,
+      _marketplaceData,
+      _tags
     );
   }
 
-  function upgradePlan(uint256 _collectionId, string memory _paymentPlan) public onlyOwnerOfCollection(_collectionId) {
+  function upgradePlan(uint256 _collectionId, string memory _paymentPlan, string memory _paymentTxHash) public onlyOwnerOfCollection(_collectionId) {
     CollectionData memory collectionData = collections[_collectionId];
     PaymentPlanHistory memory _paymentPlanHistory = PaymentPlanHistory(
       0,
-      _paymentPlan
+      _paymentPlan,
+      _paymentTxHash
     );
     paymentPlanHistory[_collectionId].push(_paymentPlanHistory);
     collectionData.status = 3;
     collections[_collectionId] = collectionData;
 
+    emit PaymentPlanHistoryAdded(_collectionId, 0, _paymentPlan, _paymentTxHash);
+
     emit CollectionRequestPlanUpgrade(
-      msg.sender,
       _collectionId,
-      collectionData.collectionInfo.name
+      _paymentPlan,
+      3
     );
   }
 
   function publishCollection(uint256 _collectionId) public onlyOwner {
     CollectionData memory collectionData = collections[_collectionId];
     paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].startDate = block.timestamp;
-    if (!collectionData.isVariablePaymentPlan) {
-      collectionData.paymentPlan = paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].paymentPlan;
+    if (!collectionData.paymentInfo.isVariablePaymentPlan) {
+      collectionData.paymentInfo.paymentPlan = paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].paymentPlan;
     }
     collectionData.status = 1;
     collections[_collectionId] = collectionData;
 
+    emit PaymentPlanHistoryAdded(
+      _collectionId, 
+      block.timestamp, 
+      paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].paymentPlan,
+      paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].paymentTxHash
+    );
+
     emit CollectionPublished(
-      msg.sender,
       _collectionId,
-      collectionData.collectionInfo.name
+      collectionData.paymentInfo.paymentPlan,
+      1
     );
   }
 
@@ -231,21 +321,30 @@ contract NFTCollections is Ownable {
     collections[_collectionId] = collectionData;
 
     emit CollectionCancelled(
-      msg.sender,
       _collectionId,
-      collectionData.collectionInfo.name
+      2
     );
   }
 
-  function startVariablePlan(uint256 _collectionId) public onlyOwner {
+  function startVariablePaymentPlan(uint256 _collectionId) public onlyOwner {
     CollectionData memory collectionData = collections[_collectionId];
-    collectionData.isVariablePaymentPlan = true;
+    collectionData.paymentInfo.isVariablePaymentPlan = true;
     collections[_collectionId] = collectionData;
+
+    emit StartVariablePaymentPlan(
+      _collectionId,
+      true
+    );
   }
 
-  function endVariablePlan(uint256 _collectionId) public onlyOwner {
+  function endVariablePaymentPlan(uint256 _collectionId) public onlyOwner {
     CollectionData memory collectionData = collections[_collectionId];
-    collectionData.isVariablePaymentPlan = false;
+    collectionData.paymentInfo.isVariablePaymentPlan = false;
     collections[_collectionId] = collectionData;
+
+    emit EndVariablePaymentPlan(
+      _collectionId,
+      false
+    );
   }
 }
