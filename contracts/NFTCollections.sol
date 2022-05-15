@@ -145,13 +145,9 @@ contract NFTCollections is Ownable {
   }
 
   function createCollection(
-    string memory _name, 
-    string memory _description, 
-    string memory _imageURI,
-    string memory _blockchain,
+    string[] memory _collectionInfo,
     uint256 _totalSupply, 
-    uint256 _mintDate, 
-    uint256 _price,
+    uint256[] memory _mintingInfo,
     string[] memory _contactData,
     string[] memory _marketplaceData,
     string[] memory _tags,
@@ -159,19 +155,32 @@ contract NFTCollections is Ownable {
   ) public onlyOneCollectionByWallet {
     _collectionIds.increment();
 
+    PaymentPlanHistory memory _paymentPlanHistory = PaymentPlanHistory(
+      0,
+      _paymentInfo[0],
+      _paymentInfo[1]
+    );
+    paymentPlanHistory[_collectionIds.current()].push(_paymentPlanHistory);
+
+    emit PaymentPlanHistoryAdded(_collectionIds.current(), 0, _paymentInfo[0], _paymentInfo[1]);
+
+    if (keccak256(abi.encodePacked("featured")) == keccak256(abi.encodePacked(_paymentInfo[0]))) {
+      _paymentInfo[0] = "free";
+    }
+
     CollectionData memory collectionData = CollectionData(
       CollectionInfo(
         msg.sender,
         _collectionIds.current(),
-        _name,
-        _description,
-        _imageURI,
-        _blockchain,
+        _collectionInfo[0],
+        _collectionInfo[1],
+        _collectionInfo[2],
+        _collectionInfo[3],
         _totalSupply
       ),
       MintingInfo(
-        _mintDate,
-        _price
+        _mintingInfo[0],
+        _mintingInfo[1]
       ),
       ContactData(
         _contactData[0],
@@ -193,25 +202,16 @@ contract NFTCollections is Ownable {
     collections[_collectionIds.current()] = collectionData;
     hasCollection[msg.sender] = true;
 
-    PaymentPlanHistory memory _paymentPlanHistory = PaymentPlanHistory(
-      0,
-      _paymentInfo[0],
-      _paymentInfo[1]
-    );
-    paymentPlanHistory[_collectionIds.current()].push(_paymentPlanHistory);
-
-    emit PaymentPlanHistoryAdded(_collectionIds.current(), 0, _paymentInfo[0], _paymentInfo[1]);
-
     emit CollectionCreated(
       msg.sender,
       _collectionIds.current(),
-      _name,
-      _description,
-      _imageURI,
-      _blockchain,
+      _collectionInfo[0],
+      _collectionInfo[1],
+      _collectionInfo[2],
+      _collectionInfo[3],
       _totalSupply,
-      _mintDate,
-      _price
+      _mintingInfo[0],
+      _mintingInfo[1]
     );
 
     emit CollectionContactCreated(
@@ -285,6 +285,10 @@ contract NFTCollections is Ownable {
 
     emit PaymentPlanHistoryAdded(_collectionId, 0, _paymentPlan, _paymentTxHash);
 
+    if (keccak256(abi.encodePacked("featured")) == keccak256(abi.encodePacked(_paymentPlan))) {
+      _paymentPlan = "free";
+    }
+
     emit CollectionRequestPlanUpgrade(
       _collectionId,
       _paymentPlan,
@@ -295,7 +299,7 @@ contract NFTCollections is Ownable {
   function publishCollection(uint256 _collectionId) public onlyOwner {
     CollectionData memory collectionData = collections[_collectionId];
     paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].startDate = block.timestamp;
-    if (!collectionData.paymentInfo.isVariablePaymentPlan) {
+    if (keccak256(abi.encodePacked("featured")) != keccak256(abi.encodePacked(paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].paymentPlan))) {
       collectionData.paymentInfo.paymentPlan = paymentPlanHistory[_collectionId][paymentPlanHistory[_collectionId].length - 1].paymentPlan;
     }
     collectionData.status = 1;
